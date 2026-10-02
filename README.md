@@ -83,7 +83,7 @@ flowchart TD
 
 ## Optional Jira Integration
 
-The project's Python review pipeline can enrich a review with the Jira issue associated with the current branch. When configured, it extracts an issue key, fetches the issue title and description, and makes the issue URL and details available to the review and question-answering prompts. This gives the local model requirements context to compare with the code changes.
+The review API can enrich a code review with Jira requirements. Enter an issue key on the Repository Review page, or leave it blank to detect a key such as `PROJ-123` from the branch name. When configured, the API fetches the issue title and description and sends them to the local model alongside the code. The Python review pipeline also supports Jira issue context for review summaries and questions about a change.
 
 | Capability | Details |
 |---|---|
@@ -91,9 +91,19 @@ The project's Python review pipeline can enrich a review with the Jira issue ass
 | Context retrieved | Jira issue title, description, and browse URL. |
 | Review usage | Adds issue context to review summaries so implementation can be compared with the stated requirement. |
 | Q&A usage | Makes the associated issue available when asking questions about a change. |
-| Web interface | The current browser-based repository review endpoint does not yet connect to Jira; Jira context is available through the Python review pipeline. |
+| Web interface | Shows the fetched issue on the review page and includes its requirements in the local-model prompt. |
 
-Configure the integration with environment variables before running the Python review pipeline:
+Configure Jira credentials in the environment of the API server. For PowerShell, set them before starting the server:
+
+```powershell
+$env:JIRA_URL = "https://your-domain.atlassian.net"
+$env:JIRA_USER = "your-account@example.com"
+$env:JIRA_TOKEN = "your-api-token"
+```
+
+`JIRA_USER` is optional for Jira Server/Data Center token authentication. The API also accepts `JIRA_USERNAME` or `JIRA_EMAIL`, and token aliases `JIRA_API_TOKEN` or `JIRA_API_KEY`. Credentials are never sent from the browser. If no issue key is found or Jira is not configured, code analysis continues without Jira context.
+
+The Python review pipeline accepts the same environment configuration:
 
 | Variable | Required | Purpose |
 |---|---|---|

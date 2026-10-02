@@ -8,6 +8,7 @@ const Review = () => {
   const { user } = useAuth();
   const [repoUrl, setRepoUrl] = useState('');
   const [branch, setBranch] = useState('main');
+  const [jiraIssueKey, setJiraIssueKey] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState('');
@@ -29,7 +30,11 @@ const Review = () => {
       const response = await fetch('http://localhost:8000/api/review', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo_url: repoUrl, branch }),
+        body: JSON.stringify({
+          repo_url: repoUrl,
+          branch,
+          jira_issue_key: jiraIssueKey.trim() || undefined,
+        }),
       });
 
       const data = await response.json();
@@ -283,7 +288,7 @@ const Review = () => {
         </div>
 
         <div className="glass-card rounded-3xl p-5 sm:p-7">
-          <div className="grid gap-5 lg:grid-cols-[1fr_220px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_180px_190px]">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-300">GitHub repository URL</label>
               <div className="relative">
@@ -295,7 +300,18 @@ const Review = () => {
               <label className="mb-2 block text-sm font-medium text-slate-300">Branch</label>
               <input className="input-field" placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} />
             </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-300">Jira issue <span className="text-slate-500">(optional)</span></label>
+              <input
+                className="input-field"
+                placeholder="PROJ-123"
+                value={jiraIssueKey}
+                onChange={(e) => setJiraIssueKey(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
           </div>
+          <p className="mt-3 text-xs text-slate-500">Leave blank to detect an issue key from the branch name. Jira credentials stay on the API server.</p>
 
           {error && (
             <div className="mt-5 flex items-center gap-3 rounded-xl border border-rose-300/20 bg-rose-400/[0.06] p-3 text-sm text-rose-300">
@@ -310,6 +326,31 @@ const Review = () => {
 
         {results && (
           <div className="mt-7 space-y-6">
+            {results.jira_issue && results.jira_issue.status !== 'not_detected' && (
+              <section className="glass-card rounded-3xl p-5 sm:p-7">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-300/[0.08] text-cyan-300"><FileText className="h-5 w-5" /></div>
+                  <div>
+                    <h2 className="text-xl font-bold">Jira requirements</h2>
+                    <p className="text-sm text-slate-500">Issue context supplied to the local model</p>
+                  </div>
+                </div>
+                {results.jira_issue.status === 'found' ? (
+                  <div>
+                    <a href={results.jira_issue.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-cyan-200 hover:text-cyan-100">
+                      {results.jira_issue.key}: {results.jira_issue.title}
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                    {results.jira_issue.description && (
+                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-300">{results.jira_issue.description}</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-amber-200">{results.jira_issue.message || `Jira issue ${results.jira_issue.key} could not be loaded.`}</p>
+                )}
+              </section>
+            )}
+
             {/* Repository Overview */}
             <section className="glass-card rounded-3xl p-5 sm:p-7">
               <div className="mb-4 flex items-center gap-3">

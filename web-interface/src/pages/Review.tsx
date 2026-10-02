@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, AlertCircle, FileText, Bug, Shield, Zap, Download, FileJson, Sparkles, GitBranch, ExternalLink, Copy, ChevronDown, ChevronUp, Filter, Cpu } from 'lucide-react';
+import { Loader2, AlertCircle, FileText, Bug, Shield, Zap, Download, FileJson, Sparkles, GitBranch, ExternalLink, Copy, ChevronDown, ChevronUp, Filter, Cpu, ArrowRight, BarChart3 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useAuth } from '../context/AuthContext';
@@ -137,128 +137,254 @@ const Review = () => {
 
   const generatePDF = () => {
     if (!results) return;
-    const doc = new jsPDF();
-    let y = 20;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - margin * 2;
+    const background: [number, number, number] = [7, 13, 25];
+    const panel: [number, number, number] = [15, 27, 43];
+    const foreground: [number, number, number] = [230, 239, 248];
+    const muted: [number, number, number] = [145, 163, 184];
+    const accent: [number, number, number] = [59, 211, 220];
+    let y = 18;
 
-    // Report Cover
-    doc.setFontSize(24);
-    doc.setTextColor(30, 120, 150);
-    doc.text('AI Code Reviewer Report', 14, y);
-    y += 15;
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
-    y += 20;
+    const paintPage = () => {
+      doc.setFillColor(...background);
+      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+    };
 
-    // Repository Info
-    doc.setFontSize(14);
-    doc.setTextColor(30, 30, 30);
-    doc.text('Repository Information', 14, y);
-    y += 10;
-    doc.setFontSize(10);
-    doc.text(`Repository: ${results.repo}`, 14, y);
-    y += 7;
-    doc.text(`Branch: ${results.branch}`, 14, y);
-    y += 7;
-    doc.text(`Health Score: ${calculateHealthScore()}/100`, 14, y);
-    y += 15;
+    const ensureRoom = (needed: number) => {
+      if (y + needed > pageHeight - 18) {
+        doc.addPage();
+        paintPage();
+        y = 18;
+      }
+    };
 
-    // Repository Overview
-    doc.setFontSize(14);
-    doc.setTextColor(30, 120, 150);
-    doc.text('Repository Overview', 14, y);
-    y += 10;
-    doc.setFontSize(10);
-    doc.setTextColor(30, 30, 30);
-    const overviewLines = doc.splitTextToSize(results.repository_overview || 'Not available', 180);
-    doc.text(overviewLines, 14, y);
-    y += overviewLines.length * 7 + 10;
+    const sectionTitle = (title: string) => {
+      ensureRoom(13);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...accent);
+      doc.text(title.toUpperCase(), margin, y);
+      y += 3;
+      doc.setDrawColor(35, 67, 87);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 7;
+    };
 
-    // Review Summary
-    doc.setFontSize(14);
-    doc.setTextColor(30, 120, 150);
-    doc.text('Review Summary', 14, y);
-    y += 10;
-    doc.setFontSize(10);
-    doc.setTextColor(30, 30, 30);
-    const summaryLines = doc.splitTextToSize(results.review_summary || 'Not available', 180);
-    doc.text(summaryLines, 14, y);
-    y += summaryLines.length * 7 + 10;
+    const paragraph = (value: string) => {
+      const lines: string[] = doc.splitTextToSize(value || 'Not available.', contentWidth);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...foreground);
+      for (const line of lines) {
+        ensureRoom(5);
+        doc.text(line, margin, y);
+        y += 4.5;
+      }
+      y += 3;
+    };
 
-    // Technologies
-    if (results.technologies && results.technologies.length > 0) {
-      doc.setFontSize(14);
-      doc.setTextColor(30, 120, 150);
-      doc.text('Technologies Detected', 14, y);
-      y += 10;
-      doc.setFontSize(10);
-      doc.setTextColor(30, 30, 30);
-      doc.text(results.technologies.join(', '), 14, y);
-      y += 15;
+    const darkTable = (head: string[][], body: string[][], columnStyles?: Record<number, object>) => {
+      const firstTablePage = doc.getNumberOfPages();
+      autoTable(doc, {
+        startY: y,
+        head,
+        body,
+        theme: 'grid',
+        margin: { left: margin, right: margin, top: 16, bottom: 16 },
+        styles: {
+          fillColor: panel,
+          textColor: foreground,
+          lineColor: [37, 53, 72],
+          lineWidth: 0.15,
+          fontSize: 8,
+          cellPadding: 3,
+          overflow: 'linebreak',
+        },
+        headStyles: {
+          fillColor: [11, 104, 131],
+          textColor: [239, 252, 255],
+          fontStyle: 'bold',
+        },
+        alternateRowStyles: { fillColor: [19, 35, 53] },
+        columnStyles,
+        willDrawPage: (hookData) => {
+          if (hookData.pageNumber > firstTablePage) {
+            paintPage();
+            doc.setFontSize(7);
+            doc.setTextColor(...muted);
+            doc.text('LOCAL LLM CODE REVIEW  /  ANALYSIS REPORT', margin, 10);
+          }
+        },
+      });
+      y = ((doc as any).lastAutoTable.finalY || y) + 9;
+    };
+
+    paintPage();
+    doc.setFillColor(...accent);
+    doc.roundedRect(margin, y, 2, 22, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...accent);
+    doc.text('LOCAL MODEL  /  CODE INTELLIGENCE', margin + 7, y + 4);
+    doc.setFontSize(22);
+    doc.setTextColor(...foreground);
+    doc.text('Repository review', margin + 7, y + 13);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...muted);
+    doc.text(`${results.repo}  ·  ${results.branch}`, margin + 7, y + 20);
+    y += 31;
+
+    const metrics = [
+      ['HEALTH', `${calculateHealthScore()}/100`],
+      ['FINDINGS', String(results.summary.totalIssues)],
+      ['FILES', String(results.summary.filesAnalyzed)],
+      ['TECHNOLOGIES', String(results.technologies?.length || 0)],
+    ];
+    const cardGap = 3;
+    const cardWidth = (contentWidth - cardGap * 3) / 4;
+    metrics.forEach(([label, value], index) => {
+      const x = margin + index * (cardWidth + cardGap);
+      doc.setFillColor(...panel);
+      doc.setDrawColor(35, 53, 73);
+      doc.roundedRect(x, y, cardWidth, 18, 2, 2, 'FD');
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      doc.text(label, x + 3, y + 6);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...foreground);
+      doc.text(value, x + 3, y + 13.5);
+    });
+    y += 26;
+
+    sectionTitle('Report details');
+    darkTable(
+      [['Repository', 'Branch', 'Generated', 'Inference']],
+      [[results.repo, results.branch, new Date().toLocaleString(), 'Ollama · llama3.2']],
+    );
+
+    sectionTitle('Executive summary');
+    paragraph(results.repository_overview || 'Repository overview not available.');
+    paragraph(results.review_summary || 'Review summary not available.');
+
+    sectionTitle('Jira requirements');
+    const jiraIssue = results.jira_issue;
+    if (jiraIssue?.status === 'found') {
+      darkTable(
+        [['Issue', 'Title', 'Description', 'Jira link']],
+        [[jiraIssue.key || '—', jiraIssue.title || '—', jiraIssue.description || 'No description provided.', jiraIssue.url || '—']],
+        { 0: { cellWidth: 20 }, 1: { cellWidth: 38 }, 2: { cellWidth: 82 }, 3: { cellWidth: 40 } },
+      );
+    } else {
+      const jiraStatus = jiraIssue?.key
+        ? `${jiraIssue.key} · ${jiraIssue.message || jiraIssue.status}`
+        : 'No Jira issue was associated with this review.';
+      paragraph(jiraStatus);
     }
 
-    // Repository Statistics
-    doc.setFontSize(14);
-    doc.setTextColor(30, 120, 150);
-    doc.text('Repository Statistics', 14, y);
-    y += 10;
-    doc.setFontSize(10);
-    doc.setTextColor(30, 30, 30);
-    doc.text(`Files Analyzed: ${results.summary.filesAnalyzed}`, 14, y);
-    y += 7;
-    doc.text(`Total Issues: ${results.summary.totalIssues}`, 14, y);
-    y += 7;
-    doc.text(`Critical: ${results.summary.critical}`, 14, y);
-    y += 7;
-    doc.text(`High: ${results.summary.high}`, 14, y);
-    y += 7;
-    doc.text(`Medium: ${results.summary.medium}`, 14, y);
-    y += 7;
-    doc.text(`Low: ${results.summary.low}`, 14, y);
-    y += 15;
-
-    // Severity Summary
-    doc.setFontSize(14);
-    doc.setTextColor(30, 120, 150);
-    doc.text('Severity Summary', 14, y);
-    y += 10;
-
-    const severityData = [
-      ['Critical', results.summary.critical.toString()],
-      ['High', results.summary.high.toString()],
-      ['Medium', results.summary.medium.toString()],
-      ['Low', results.summary.low.toString()],
+    sectionTitle('Severity analytics');
+    ensureRoom(57);
+    const chartY = y;
+    doc.setFillColor(...panel);
+    doc.setDrawColor(35, 53, 73);
+    doc.roundedRect(margin, chartY, contentWidth, 53, 2, 2, 'FD');
+    const severityRows = [
+      ['Critical', results.summary.critical, [251, 113, 133] as [number, number, number]],
+      ['High', results.summary.high, [251, 146, 60] as [number, number, number]],
+      ['Medium', results.summary.medium, [250, 204, 21] as [number, number, number]],
+      ['Low', results.summary.low, [56, 189, 248] as [number, number, number]],
     ];
-    autoTable(doc, {
-      startY: y,
-      head: [['Severity', 'Count']],
-      body: severityData,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 120, 150] },
-      styles: { fontSize: 10, cellPadding: 3 },
+    const maxSeverityCount = Math.max(1, ...severityRows.map(([, count]) => Number(count)));
+    severityRows.forEach(([label, count, color], index) => {
+      const rowY = chartY + 11 + index * 10;
+      const barX = margin + 34;
+      const barWidth = contentWidth - 48;
+      doc.setFontSize(8);
+      doc.setTextColor(...muted);
+      doc.text(String(label), margin + 4, rowY + 2);
+      doc.setFillColor(34, 49, 67);
+      doc.roundedRect(barX, rowY - 1, barWidth, 4, 1.5, 1.5, 'F');
+      if (Number(count) > 0) {
+        doc.setFillColor(...color);
+        doc.roundedRect(barX, rowY - 1, Math.max(2, (Number(count) / maxSeverityCount) * barWidth), 4, 1.5, 1.5, 'F');
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...foreground);
+      doc.text(String(count), pageWidth - margin - 5, rowY + 2, { align: 'right' });
     });
-    y = (doc as any).lastAutoTable.finalY + 15;
+    y += 61;
 
-    // Detailed Issues
-    doc.setFontSize(14);
-    doc.setTextColor(30, 120, 150);
-    doc.text('Detailed Issues', 14, y);
-    y += 10;
-
-    const tableData = results.issues.map((issue: any) => [
-      issue.category,
-      issue.severity,
-      issue.message.substring(0, 50) + (issue.message.length > 50 ? '...' : ''),
-      issue.suggestion.substring(0, 50) + (issue.suggestion.length > 50 ? '...' : ''),
-    ]);
-    autoTable(doc, {
-      startY: y,
-      head: [['Category', 'Severity', 'Issue', 'Suggestion']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 120, 150] },
-      styles: { fontSize: 8, cellPadding: 3 },
+    sectionTitle('Analysis flow');
+    ensureRoom(30);
+    const flowNodes = [
+      ['Repository', 'GitHub source'],
+      ['Code context', `${results.summary.filesAnalyzed} files`],
+      ['Jira context', jiraIssue?.status === 'found' ? jiraIssue.key : 'Optional'],
+      ['Local model', 'Ollama'],
+      ['Report', `${results.summary.totalIssues} findings`],
+    ];
+    const nodeGap = 5;
+    const nodeWidth = (contentWidth - nodeGap * (flowNodes.length - 1)) / flowNodes.length;
+    flowNodes.forEach(([title, detail], index) => {
+      const x = margin + index * (nodeWidth + nodeGap);
+      doc.setFillColor(...panel);
+      doc.setDrawColor(40, 92, 111);
+      doc.roundedRect(x, y, nodeWidth, 19, 2, 2, 'FD');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...foreground);
+      doc.text(String(title), x + nodeWidth / 2, y + 7, { align: 'center', maxWidth: nodeWidth - 3 });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...muted);
+      doc.text(String(detail), x + nodeWidth / 2, y + 13, { align: 'center', maxWidth: nodeWidth - 3 });
+      if (index < flowNodes.length - 1) {
+        const arrowStart = x + nodeWidth + 0.5;
+        const arrowEnd = arrowStart + nodeGap - 1;
+        doc.setDrawColor(...accent);
+        doc.line(arrowStart, y + 9.5, arrowEnd, y + 9.5);
+        doc.line(arrowEnd - 1.2, y + 8.3, arrowEnd, y + 9.5);
+        doc.line(arrowEnd - 1.2, y + 10.7, arrowEnd, y + 9.5);
+      }
     });
+    y += 27;
+
+    if (results.technologies?.length) {
+      sectionTitle('Detected technologies');
+      darkTable([['Technologies']], [[results.technologies.join('  ·  ')] ]);
+    }
+
+    sectionTitle('Findings register');
+    if (!results.issues.length) {
+      paragraph('No issues were reported by the model for this analysis.');
+    } else {
+      darkTable(
+        [['Severity', 'Category', 'Finding', 'Recommendation']],
+        results.issues.map((issue: any) => [
+          String(issue.severity || '—').toUpperCase(),
+          issue.category || 'General',
+          issue.message || 'No finding details provided.',
+          issue.suggestion || 'No recommendation provided.',
+        ]),
+        { 0: { cellWidth: 22 }, 1: { cellWidth: 30 }, 2: { cellWidth: 62 }, 3: { cellWidth: 66 } },
+      );
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setDrawColor(35, 53, 73);
+      doc.line(margin, pageHeight - 13, pageWidth - margin, pageHeight - 13);
+      doc.setFontSize(7);
+      doc.setTextColor(...muted);
+      doc.text('PRIVATE LOCAL ANALYSIS  ·  VERIFY FINDINGS BEFORE ACTION', margin, pageHeight - 8);
+      doc.text(`${page} / ${pageCount}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+    }
 
     doc.save(`${results.repo.replace('/', '-')}-review-report.pdf`);
     showToast('Report downloaded');
@@ -277,6 +403,20 @@ const Review = () => {
   };
 
   const filteredIssues = getFilteredIssues();
+  const severityRows = results ? [
+    { label: 'Critical', count: results.summary.critical, bar: 'bg-rose-400', text: 'text-rose-300' },
+    { label: 'High', count: results.summary.high, bar: 'bg-orange-400', text: 'text-orange-300' },
+    { label: 'Medium', count: results.summary.medium, bar: 'bg-amber-300', text: 'text-amber-200' },
+    { label: 'Low', count: results.summary.low, bar: 'bg-sky-400', text: 'text-sky-300' },
+  ] : [];
+  const maxSeverityCount = Math.max(1, ...severityRows.map((row: any) => row.count));
+  const workflowSteps = results ? [
+    { title: 'Repository', detail: 'GitHub source' },
+    { title: 'Code context', detail: `${results.summary.filesAnalyzed} files analyzed` },
+    { title: 'Jira context', detail: results.jira_issue?.status === 'found' ? results.jira_issue.key : 'Optional requirement link' },
+    { title: 'Local model', detail: 'Ollama · llama3.2' },
+    { title: 'Review report', detail: `${results.summary.totalIssues} findings` },
+  ] : [];
 
   return (
     <div className="min-h-screen px-4 pb-20 pt-28 sm:px-6 lg:px-8">
@@ -367,6 +507,71 @@ const Review = () => {
                 <div><h2 className="text-2xl font-bold">Review Summary</h2><p className="text-sm text-slate-500">Analysis overview</p></div>
               </div>
               <p className="leading-6 text-slate-300">{results.review_summary || 'Review summary not available.'}</p>
+            </section>
+
+            <section className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+              <div className="glass-card rounded-3xl p-5 sm:p-7">
+                <div className="mb-6 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="section-label mb-3"><BarChart3 className="h-3.5 w-3.5" /> Findings profile</div>
+                    <h2 className="text-xl font-bold">Severity analytics</h2>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-white">{results.summary.totalIssues}</div>
+                    <div className="text-xs text-slate-500">total findings</div>
+                  </div>
+                </div>
+                <div className="space-y-5" role="img" aria-label="Horizontal bar chart of findings by severity">
+                  {severityRows.map((row: any) => (
+                    <div key={row.label}>
+                      <div className="mb-2 flex items-center justify-between text-sm">
+                        <span className={row.text}>{row.label}</span>
+                        <span className="font-semibold text-slate-200">{row.count}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-white/[0.07]">
+                        <div
+                          className={`h-full rounded-full ${row.bar} transition-[width] duration-700`}
+                          style={{ width: `${(row.count / maxSeverityCount) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-5 border-t border-white/[0.07] pt-4 text-xs leading-5 text-slate-500">
+                  Counts are model-generated review findings, grouped by reported severity.
+                </p>
+              </div>
+
+              <div className="glass-card rounded-3xl p-5 sm:p-7">
+                <div className="mb-6">
+                  <div className="section-label mb-3"><GitBranch className="h-3.5 w-3.5" /> Analysis path</div>
+                  <h2 className="text-xl font-bold">From code to report</h2>
+                  <p className="mt-1 text-sm text-slate-500">The context used to produce these findings</p>
+                </div>
+                <div className="flex flex-col gap-2 md:flex-row md:items-stretch">
+                  {workflowSteps.map((step: any, index: number) => (
+                    <div key={step.title} className="flex min-w-0 flex-1 flex-col items-stretch gap-2 md:flex-row md:items-center">
+                      <div className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-slate-950/50 p-3">
+                        <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Step {String(index + 1).padStart(2, '0')}</div>
+                        <div className="truncate text-sm font-semibold text-white">{step.title}</div>
+                        <div className="mt-1 truncate text-xs text-slate-500" title={step.detail}>{step.detail}</div>
+                      </div>
+                      {index < workflowSteps.length - 1 && (
+                        <ArrowRight aria-hidden="true" className="mx-auto h-4 w-4 shrink-0 rotate-90 text-cyan-300/70 md:rotate-0" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {results.jira_issue?.status === 'found' && (
+                  <div className="mt-5 flex items-start gap-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.045] p-3">
+                    <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-cyan-200" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold uppercase tracking-wider text-cyan-200">Requirements context attached</div>
+                      <div className="mt-1 truncate text-sm text-slate-300">{results.jira_issue.key}: {results.jira_issue.title}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </section>
 
             {/* Repository Statistics */}
